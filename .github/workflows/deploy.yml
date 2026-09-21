@@ -1,0 +1,71 @@
+# 部署 Quartz 站点到 GitHub Pages
+#
+# 与上游 deploy-v5.yaml 的区别：上游那个带
+#   if: github.repository == 'jackyzha0/quartz'
+# 是给 Quartz 自己用的预览部署，在 fork 出来的仓库里会被直接跳过 —— 所以本站点没有可用的部署。
+#
+# 前置条件（一次性，在 GitHub 网页上做）：
+#   Settings → Pages → Build and deployment → Source 选 **GitHub Actions**
+#
+# 触发：推送到 v5 分支，或在 Actions 页手动 Run workflow
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [v5]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同时只跑一个部署；排队中的不取消，避免把正在发的版本打断
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # created-modified-date 插件的日期优先级含 git，浅克隆会拿不到历史时间
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Quartz plugins
+        run: npx quartz plugin install
+
+      - name: Build site
+        run: npx quartz build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
